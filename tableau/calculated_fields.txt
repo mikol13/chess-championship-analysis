@@ -1,0 +1,196 @@
+// ============================================================================
+// TABLEAU CALCULATED FIELDS - Chess Analytics (Lichess) workbook
+// ----------------------------------------------------------------------------
+// How to use: in the Data pane click the small arrow > Create Calculated Field,
+// type the name shown above each formula, paste the formula, click OK.
+// Create the fields 1-8 in the "Chess Games" data source (fact_games + dimensions
+// + player_games) and section 9 in the "Players" data source (player_summary).
+// Sections 6-7 need the Min Games parameter first (see section 7).
+//
+// Number formats (right-click field > Default Properties > Number Format):
+//   % fields -> Percentage, 1 decimal | counts -> Number (Standard), 0 decimals
+//   White Score / Expected White Score -> Number, 3 decimals
+//
+// Notes:
+//  * No special divide function is needed: dividing by zero returns Null in Tableau.
+//  * The fact table has 0/1 flag columns (is_white_win, is_upset, ...) so every
+//    measure is a simple SUM / AVG.
+//  * Tableau's relationships keep each table at its own level of detail, so
+//    fact_games measures are not inflated when player_games is also in the view.
+//  * If a field name exists in two tables (game_id is in fact_games AND
+//    player_games), Tableau shows the second as "game_id (player_games)".
+//    Plain [game_id] below always means the fact_games one.
+// ============================================================================
+
+
+// ---------------------------------------------------------------- 1. VOLUME
+// Name: Total Games
+COUNTD([game_id])
+
+// Name: Unique Players
+// Counts players across BOTH colours. Uses the long-format player_games table
+// (2 rows per game), so it responds to every filter.
+COUNTD([player_id])
+
+
+// --------------------------------------------------------------- 2. OUTCOMES
+// Name: White Wins
+SUM([is_white_win])
+
+// Name: Black Wins
+SUM([is_black_win])
+
+// Name: Draws
+SUM([is_draw])
+
+// Name: White Win %
+[White Wins] / [Total Games]
+
+// Name: Black Win %
+[Black Wins] / [Total Games]
+
+// Name: Draw %
+[Draws] / [Total Games]
+
+// Name: White Win % (Decisive)
+// White wins as a share of decisive games only (draws removed)
+[White Wins] / SUM([is_decisive])
+
+// Name: White Score
+// Chess score: win = 1, draw = 0.5, loss = 0  (0.5 = perfectly balanced)
+AVG([white_score])
+
+
+// ------------------------------------------------------------ 3. HOW GAMES END
+// Name: Checkmate %
+SUM([is_mate]) / [Total Games]
+
+// Name: Resignation %
+SUM([is_resign]) / [Total Games]
+
+// Name: Timeout %
+SUM([is_timeout]) / [Total Games]
+
+
+// ------------------------------------------------------ 4. RATINGS AND UPSETS
+// Name: Avg Rating
+AVG([avg_rating])
+
+// Name: Avg Rating Gap
+AVG([abs_rating_diff])
+
+// Name: Upsets
+// Upset = decisive game won by the lower-rated player (equal ratings excluded)
+SUM([is_upset])
+
+// Name: Upset Rate
+SUM([is_upset]) / SUM([is_upset_eligible])
+
+// Name: Higher-Rated Win %
+1 - [Upset Rate]
+
+// Name: Expected White Score
+// Elo theory vs reality for the white player
+AVG([expected_white_score])
+
+// Name: Elo Gap (Actual - Expected)
+[White Score] - [Expected White Score]
+
+
+// ------------------------------------------------------------- 5. GAME LENGTH
+// Name: Avg Turns
+AVG([turns])
+
+// Name: Median Turns
+// (If MEDIAN is greyed out, switch the data source from Live to Extract.)
+MEDIAN([turns])
+
+
+// -------------------------------------------- 6. STATISTICAL CONFIDENCE (CIs)
+// Same idea as the notebook: 95% CI around white's average score, and a flag
+// for whether the interval excludes 0.5 (i.e. differs from a balanced opening).
+// STDEV() in Tableau is the sample standard deviation.
+
+// Name: White Score SE
+STDEV([white_score]) / SQRT([Total Games])
+
+// Name: White Score CI Low
+[White Score] - 1.96 * [White Score SE]
+
+// Name: White Score CI High
+[White Score] + 1.96 * [White Score SE]
+
+// Name: Significance vs 50%
+IF [Total Games] < 2 THEN NULL
+ELSEIF [White Score CI Low] > 0.5 OR [White Score CI High] < 0.5 THEN "Significant"
+ELSE "Not significant"
+END
+
+
+// ------------------------------------------------ 7. MINIMUM-SAMPLE PARAMETER
+// Create the parameter first: Data pane arrow > Create Parameter
+//   Name: Min Games | Data type: Integer | Current value: 100
+//   Allowable values: Range | Minimum 10 | Maximum 500 | Step size 10
+// Then right-click it > Show Parameter Control on the Openings sheets.
+// Use the fields below on any "by opening" view so tiny samples are hidden.
+
+// Name: White Score (Min Sample)
+IF [Total Games] >= [Min Games] THEN [White Score] END
+
+// Name: Games (Min Sample)
+IF [Total Games] >= [Min Games] THEN [Total Games] END
+
+// Black's perspective (used for the "best reply to 1. e4" matrix)
+// Name: Black Score
+1 - [White Score]
+
+// Name: Black Score (Min Sample)
+IF [Total Games] >= [Min Games] THEN [Black Score] END
+
+
+// ----------------------------------------------------- 8. TIME INTELLIGENCE
+// These are table calculations. Put MONTH(dim_date[date]) (continuous) on Columns,
+// right-click the date pill > Show Missing Values, and compute along
+// "Table (across)". Showing missing months matters: without it LOOKUP(-1) would
+// jump over empty months and compare against the wrong month.
+
+// Name: Games Previous Month
+LOOKUP([Total Games], -1)
+
+// Name: Games MoM %
+([Total Games] - LOOKUP([Total Games], -1)) / ABS(LOOKUP([Total Games], -1))
+
+// Name: Cumulative Games
+RUNNING_SUM([Total Games])
+
+
+// ------------------------------------------------ 9. PLAYER PAGE (player_summary)
+// Create these in the separate "Players" data source (player_summary.csv).
+// It is a standalone, pre-aggregated table, so these use it directly.
+// (Create "Unique Players" here too, with the same COUNTD([player_id]) formula.)
+
+// Name: Regular Players
+COUNTD(IF [games] >= 20 THEN [player_id] END)
+
+// Name: Median Games per Player
+MEDIAN([games])
+
+// Name: Avg Over-performance
+AVG([overperformance])
+
+
+// ------------------------------------------------------------ 10. FORMATTING
+// Tableau cannot take a hex code from a field, so this returns a label instead.
+// Drag it to Color, then Color > Edit Colors and assign:
+//   Favours white = #E9B44C | Favours black = #1F3A5F | Balanced = #8D99AE
+
+// Name: White Score Bias
+IF [White Score] > 0.52 THEN "Favours white"
+ELSEIF [White Score] < 0.48 THEN "Favours black"
+ELSE "Balanced"
+END
+
+// Dynamic page subtitle: there is no calculated field for this. Build a small
+// sheet instead (see BUILD_GUIDE.md, Step 5): put [Total Games], [Unique Players]
+// and [White Score] on Text and type the separators in the label, so the
+// numbers keep their own thousands-separator formats and update with filters.
