@@ -20,18 +20,6 @@ A 5-dashboard interactive workbook on a star schema (1 fact table + 4 dimensions
 - **Calculated fields:** 95% confidence intervals, upset rate, Elo expected-vs-actual, table calculations for month-over-month growth, and a parameter for the minimum sample size
 - **Exact distinct-player counts** through a long-format player-game table
 
-The `.twbx` workbook file has to be created in Tableau, so this repo ships the kit instead:
-
-| File | Purpose |
-|---|---|
-| [`tableau/BUILD_GUIDE.md`](tableau/BUILD_GUIDE.md) | Step-by-step build (about 60 to 90 minutes), dashboard layouts, and check values to confirm your numbers |
-| [`tableau/calculated_fields.txt`](tableau/calculated_fields.txt) | Every calculated field and the parameter, ready to paste |
-| [`tableau/DATA_DICTIONARY.md`](tableau/DATA_DICTIONARY.md) | Each column's type, role and whether to hide it |
-| [`tableau/Preferences.tps`](tableau/Preferences.tps) | Colour palettes |
-| `tableau/data/*.csv` | `fact_games`, `dim_date`, `dim_opening`, `dim_time_control`, `dim_skill_level`, `player_games`, `player_summary`, `elo_calibration` |
-
-To start: open Tableau Desktop (or the free Tableau Public) and follow the build guide. To refresh the data, re-run section 14 of the notebook and refresh the Tableau data source.
-
 ## Key findings
 
 1. **Data quality:** 945 duplicate games (4.7%) were inflating the first-pass counts, and game duration was unusable (43% of games have zero duration), so game length is measured in turns.
